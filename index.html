@@ -247,6 +247,55 @@
             evaluateStockAlerts();
         });
 
+        // Track last-triggered scheduled alarms to avoid duplicate notifications per minute
+        const lastTriggered = {};
+
+        function pad(n) { return String(n).padStart(2, '0'); }
+
+        function formatSydneyTimestamp(dt) {
+            return dt.toLocaleString('en-AU', { timeZone: 'Australia/Sydney' });
+        }
+
+        async function evaluateAlarms() {
+            try {
+                const now = window.getSydneyNow();
+                const hhmm = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+                const todayKey = now.toISOString().slice(0,10);
+
+                currentMeds.forEach(async (med) => {
+                    if (!med.is_active) return;
+                    if (!med.scheduled_time) return;
+                    // Compare only hours:minutes
+                    if (med.scheduled_time === hhmm) {
+                        const key = `${med.id}_${todayKey}_${hhmm}`;
+                        if (lastTriggered[med.id] === key) return; // already handled this minute
+                        lastTriggered[med.id] = key;
+
+                        // Notify user and record a scheduled log
+                        const ts = formatSydneyTimestamp(now);
+                        triggerOSNotification(`⏰ ${med.name} scheduled`, `Scheduled dispense time: ${ts}`);
+
+                        try {
+                            await addDoc(collection(db, 'dispense_logs'), {
+                                medication_id: med.id,
+                                timestamp: ts,
+                                status: 'SCHEDULED',
+                                scheduled_time: med.scheduled_time
+                            });
+                        } catch (err) {
+                            console.error('Failed to write scheduled log:', err);
+                        }
+                    }
+                });
+            } catch (e) {
+                console.error('Alarm evaluation error', e);
+            }
+        }
+
+        // Start periodic alarm checks (runs immediately and then every 30s)
+        evaluateAlarms();
+        setInterval(evaluateAlarms, 30000);
+
         function renderMatrix() {
             const tableBody = document.getElementById('inventoryTableBody');
             tableBody.innerHTML = '';
