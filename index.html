@@ -199,7 +199,7 @@
             try {
                 await addDoc(collection(db, 'dispense_logs'), {
                     medication_id: medId,
-                    timestamp: new Date().toLocaleTimeString(),
+                    timestamp: new Date().toLocaleString('en-AU', { timeZone: 'Australia/Sydney' }),
                     status: 'MANUAL_OVERRIDE',
                     dispense_quantity: parseInt(selectedQty)
                 });
