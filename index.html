@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MedDispense Hub Mobile</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
+    <style>
+        body { padding: 1rem 0; background: #111827; color: #f3f4f6; font-size: 15px; }
+        .table-card { padding: 1rem; border-radius: 8px; background: #1f2937; border: 1px solid #374151; margin-top: 1rem; }
+        input, button, select { margin-bottom: 0.75rem; font-size: 14px; }
+        .tab-nav { display: flex; margin-bottom: 1.5rem; border-bottom: 2px solid #374151; }
+        .tab-btn { flex: 1; text-align: center; background: none; border: none; color: #9ca3af; padding: 0.75rem; border-radius: 0; margin: 0; font-weight: bold; }
+        .tab-btn.active { color: #3b82f6; border-bottom: 3px solid #3b82f6; background: rgba(59, 130, 246, 0.1); }
+        .page-content { display: none; }
+        .page-content.active { display: block; }
+        .alert-banner { padding: 0.75rem; border-radius: 6px; margin-bottom: 0.5rem; font-size: 13px; font-weight: 500; display: flex; align-items: center; }
+        .alert-success { background: rgba(52, 211, 153, 0.15); color: #34d399; border: 1px solid #059669; }
+        .alert-warning { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid #d97706; }
+        .alert-error { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid #dc2626; }
+    </style>
+</head>
+<body>
+    <main class="container">
+        <button id="notifyBtn" onclick="requestNotificationPermission()" style="background-color: #1e40af; border: none; width: 100%; margin-bottom: 1rem; font-size: 12px; padding: 6px;">
+            🔔 Enable System Push Notifications
+        </button>
+
+        <nav class="tab-nav">
+            <button class="tab-btn active" onclick="switchTab('medsPage', this)">📋 Inventory</button>
+            <button class="tab-btn" onclick="switchTab('logsPage', this)">🚨 Logs & Alerts</button>
+        </nav>
+
+        <div id="medsPage" class="page-content active">
+            <section>
+                <h4 style="margin-bottom:0.5rem;">Add New Schedule</h4>
+                <form id="medForm">
+                    <input type="text" id="medName" placeholder="Medication Name (e.g., Panadol)" required>
+                    <input type="number" id="medDose" placeholder="Medication Dose (e.g., 1)" required>
+                    <input type="number" id="medStock" placeholder="Total Stock Quantity (e.g., 30)" required>
+                    <input type="text" id="medTime" placeholder="Dispense Alarm Time (e.g., 08:00)" required>
+                    <button type="submit" style="background-color: #2563eb; border: none; width: 100%;">Provision & Sync</button>
+                </form>
+            </section>
+
+            <section class="table-card">
+                <h4 style="margin-bottom:0.5rem;">Active Alarms Matrix</h4>
+                <table role="grid" style="margin-bottom:0;">
+                    <thead>
+                        <tr>
+                            <th>Medication</th>
+                            <th>Alarm</th>
+                            <th>Holiday Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inventoryTableBody">
+                        <tr><td colspan="3" style="text-align: center; color: #9ca3af;">Loading database stream...</td></tr>
+                    </tbody>
+                </table>
+            </section>
+        </div>
+
+        <div id="logsPage" class="page-content">
+            <section class="table-card" style="margin-top:0; border-color: #4b5563;">
+                <h4 style="margin-bottom:0.5rem;">System Notifications</h4>
+                <div id="notificationCenter">
+                    <div class="alert-banner alert-success">● Monitoring system online. No critical exceptions parsed.</div>
+                </div>
+            </section>
+
+            <section class="table-card">
+                <h4 style="margin-bottom:0.5rem;">Live Sensor Logs</h4>
+                <table role="grid">
+                    <thead>
+                        <tr>
+                            <th>Med ID</th>
+                            <th>Time</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logsTableBody">
+                        <tr><td colspan="3" style="text-align:center; color:#9ca3af;">Awaiting hardware logs...</td></tr>
+                    </tbody>
+                </table>
+            </section>
+        </div>
+    </main>
+
+    <script>
+        function switchTab(pageId, buttonElement) {
+            document.querySelectorAll('.page-content').forEach(page => page.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(pageId).classList.add('active');
+            buttonElement.classList.add('active');
+        }
+
+        let swRegistration = null;
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js')
+                .then(reg => {
+                    swRegistration = reg;
+                    console.log('Service Worker Registered Successfully:', reg);
+                })
+                .catch(err => console.error('Service Worker Registration Failed:', err));
+        }
+
+        async function requestNotificationPermission() {
+            if (!('Notification' in window)) {
+                alert('This browser does not support notifications.');
+                return;
+            }
+
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+                alert('Notifications Enabled!');
+                const btn = document.getElementById('notifyBtn');
+                btn.innerText = '✅ Push Notifications Active';
+                btn.style.backgroundColor = '#059669';
+                triggerOSNotification('MedDispense Hub', 'System notifications successfully activated!');
+            } else {
+                alert('Permission denied. Enable notifications in your browser settings.');
+            }
+        }
+
+        function triggerOSNotification(title, message) {
+            if ('Notification' in window && Notification.permission === 'granted') {
+                if (swRegistration) {
+                    swRegistration.showNotification(title, {
+                        body: message,
+                        icon: 'https://cdn-icons-png.flaticon.com/512/888/888857.png'
+                    });
+                } else {
+                    new Notification(title, {
+                        body: message,
+                        icon: 'https://cdn-icons-png.flaticon.com/512/888/888857.png'
+                    });
+                }
+            }
+        }
+    </script>
+
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.0.0/firebase-app.js';
+        import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc } from 'https://www.gstatic.com/firebasejs/10.0.0/firebase-firestore.js';
+
+        const firebaseConfig = {
+            apiKey: 'AIzaSyDx0XO__c-vDFvY67pT_-W09EHM_4jm-KE',
+            authDomain: 'meddispense-hub.firebaseapp.com',
+            projectId: 'meddispense-hub',
+            storageBucket: 'meddispense-hub.firebasestorage.app',
+            messagingSenderId: '1071606931334',
+            appId: '1:1071606931334:web:f38a78e7442dd57c1f1607',
+            measurementId: 'G-P59HE31YVH'
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        window.deleteMedication = async function(medId) {
+            try {
+                await deleteDoc(doc(db, 'medications', medId));
+                alert('Medication deleted');
+            } catch (err) {
+                console.error('Delete failed:', err);
+            }
+        };
+
+        window.triggerHolidayDispense = async function(medId) {
+            const qtySelector = document.getElementById(`qty_${medId}`);
+            const selectedQty = qtySelector ? qtySelector.value : '1';
+
+            try {
+                await addDoc(collection(db, 'dispense_logs'), {
+                    medication_id: medId,
+                    timestamp: new Date().toLocaleTimeString(),
+                    status: 'MANUAL_OVERRIDE',
+                    dispense_quantity: parseInt(selectedQty)
+                });
+
+                alert(`Holiday Mode Activated: Instruction sent to drop ${selectedQty} pills.`);
+            } catch (err) {
+                console.error('Failed to post manual override packet: ', err);
+            }
+        };
+
+        let currentMeds = [];
+
+        document.getElementById('medForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            if (currentMeds.length >= 2) {
+                alert('Maximum of 2 medications allowed.');
+                return;
+            }
+
+            const nameValue = document.getElementById('medName').value.trim();
+            const stockValue = Number(document.getElementById('medStock').value);
+            const timeValue = document.getElementById('medTime').value.trim();
+            const doseValue = Number(document.getElementById('medDose').value);
+
+            try {
+                await addDoc(collection(db, 'medications'), {
+                    name: nameValue,
+                    total_stock: stockValue,
+                    scheduled_time: timeValue,
+                    dose: doseValue,
+                    is_active: true
+                });
+
+                document.getElementById('medForm').reset();
+            } catch (err) {
+                console.error('Atomic transaction error: ', err);
+            }
+        });
+
+        onSnapshot(collection(db, 'medications'), (snapshot) => {
+            currentMeds = [];
+            snapshot.forEach(doc => { currentMeds.push({ id: doc.id, ...doc.data() }); });
+            renderMatrix();
+            evaluateStockAlerts();
+        });
+
+        function renderMatrix() {
+            const tableBody = document.getElementById('inventoryTableBody');
+            tableBody.innerHTML = '';
+
+            if (currentMeds.length === 0) {
+                tableBody.innerHTML = "<tr><td colspan='3' style='text-align:center;'>No records active.</td></tr>";
+                return;
+            }
+
+            currentMeds.forEach(med => {
+                const row = document.createElement('tr');
+                const alarmTime = med.scheduled_time || 'None';
+                row.innerHTML = `
+                    <td><strong>${med.name}</strong><br>
+                    <small style='color:#9ca3af;'>Dose: ${med.dose} pill(s)</small><br>
+                    <small style='color:${parseInt(med.total_stock) <= 5 ? '#f87171' : '#9ca3af'};'>Stock: ${med.total_stock} left</small></td>
+                    <td><span style='color:#60a5fa;'>⏰ ${alarmTime}</span></td>
+                    <td>
+                        <select id="qty_${med.id}" style="padding: 2px 4px; font-size: 11px; margin-bottom: 0.25rem; display: inline-block; width: auto; background: #374151; color: white; border: 1px solid #4b5563;">
+                            <option value="1">1 Pill</option>
+                            <option value="3">3 Pills (Weekend)</option>
+                            <option value="7">7 Pills (1 Week)</option>
+                            <option value="14">14 Pills (2 Weeks)</option>
+                        </select>
+                        <button onclick="triggerHolidayDispense('${med.id}')" style="padding:2px 8px; font-size:11px; background:#2563eb; border:none; margin:0; width: 100%;">Dispense</button>
+                        <button onclick="deleteMedication('${med.id}')" style="padding:2px 8px; font-size:11px; background:#dc2626; border:none; margin-top:5px; width:100%;">Delete</button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        function evaluateStockAlerts() {
+            const alertBox = document.getElementById('notificationCenter');
+            alertBox.innerHTML = '';
+
+            currentMeds.forEach(med => {
+                if (parseInt(med.total_stock) <= 5) {
+                    const banner = document.createElement('div');
+                    banner.className = 'alert-banner alert-warning';
+                    banner.innerText = `⚠️ Low Stock Alert: ${med.name} running critically low (${med.total_stock} remaining).`;
+                    alertBox.appendChild(banner);
+                    triggerOSNotification('⚠️ Low Stock Alert', `${med.name} is running low (${med.total_stock} remaining)!`);
+                }
+            });
+        }
+
+        onSnapshot(collection(db, 'dispense_logs'), (snapshot) => {
+            const logsBody = document.getElementById('logsTableBody');
+            const alertBox = document.getElementById('notificationCenter');
+
+            logsBody.innerHTML = '';
+
+            if (snapshot.empty) {
+                logsBody.innerHTML = "<tr><td colspan='3' style='text-align:center; color:#9ca3af;'>No logs yet.</td></tr>";
+                return;
+            }
+
+            snapshot.forEach((doc) => {
+                const log = doc.data();
+                const row = document.createElement('tr');
+
+                row.innerHTML = `
+                    <td><small style='font-size:11px; color:#9ca3af;'>${log.medication_id ? log.medication_id.substring(0, 6) : 'System'}</small></td>
+                    <td><small>${log.timestamp || 'Just now'}</small></td>
+                    <td><span style='color:${log.status === 'SUCCESS' ? '#34d399' : log.status === 'MANUAL_OVERRIDE' ? '#60a5fa' : '#f87171'}'>● ${log.status || 'OK'}</span></td>
+                `;
+
+                logsBody.appendChild(row);
+
+                if (log.status === 'SUCCESS') {
+                    const b = document.createElement('div');
+                    b.className = 'alert-banner alert-success';
+                    b.innerText = `✅ Success: Medication successfully taken at ${log.timestamp}.`;
+                    alertBox.insertBefore(b, alertBox.firstChild);
+                    triggerOSNotification('✅ Medication Dispensed', `Medication successfully taken at ${log.timestamp}.`);
+                } else if (log.status === 'ERROR') {
+                    const b = document.createElement('div');
+                    b.className = 'alert-banner alert-error';
+                    b.innerText = `❌ Error Message: Pill was not successfully dispensed at ${log.timestamp}!`;
+                    alertBox.insertBefore(b, alertBox.firstChild);
+                    triggerOSNotification('❌ Dispenser Error', `Pill was NOT successfully dispensed at ${log.timestamp}!`);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
