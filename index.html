@@ -25,6 +25,8 @@
         <button id="notifyBtn" onclick="requestNotificationPermission()" style="background-color: #1e40af; border: none; width: 100%; margin-bottom: 1rem; font-size: 12px; padding: 6px;">
             🔔 Enable System Push Notifications
         </button>
+            <!-- Sydney Time Display -->
+            <div id="sydneyClock" style="text-align:center; margin-bottom:1rem; font-weight:600; color:#93c5fd;">Sydney: --:--:--</div>
 
         <nav class="tab-nav">
             <button class="tab-btn active" onclick="switchTab('medsPage', this)">📋 Inventory</button>
@@ -138,6 +140,30 @@
                 }
             }
         }
+
+        // Sydney timezone helpers and live clock
+        window.getSydneyNow = function() {
+            // Returns a Date object representing current time in Australia/Sydney
+            const sydneyStr = new Date().toLocaleString('en-US', { timeZone: 'Australia/Sydney' });
+            return new Date(sydneyStr);
+        };
+
+        function updateSydneyClock() {
+            try {
+                const now = window.getSydneyNow();
+                const h = String(now.getHours()).padStart(2, '0');
+                const m = String(now.getMinutes()).padStart(2, '0');
+                const s = String(now.getSeconds()).padStart(2, '0');
+                const el = document.getElementById('sydneyClock');
+                if (el) el.textContent = `Sydney: ${h}:${m}:${s}`;
+            } catch (e) {
+                console.error('Sydney clock update failed', e);
+            }
+        }
+
+        // Initialize clock and update every second
+        updateSydneyClock();
+        setInterval(updateSydneyClock, 1000);
     </script>
 
     <script type="module">
