@@ -343,43 +343,54 @@
             });
         }
 
+        // Listen for real-time changes and only act on newly added logs to avoid duplicate notifications
         onSnapshot(collection(db, 'dispense_logs'), (snapshot) => {
             const logsBody = document.getElementById('logsTableBody');
             const alertBox = document.getElementById('notificationCenter');
 
-            logsBody.innerHTML = '';
+            // Process individual document changes (added/modified/removed)
+            snapshot.docChanges().forEach(change => {
+                if (change.type === 'added') {
+                    const log = change.doc.data();
 
-            if (snapshot.empty) {
-                logsBody.innerHTML = "<tr><td colspan='3' style='text-align:center; color:#9ca3af;'>No logs yet.</td></tr>";
-                return;
-            }
+                    // Create a row for the new log and prepend it
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td><small style='font-size:11px; color:#9ca3af;'>${log.medication_id ? log.medication_id.substring(0,6) : 'System'}</small></td>
+                        <td><small>${log.timestamp || 'Just now'}</small></td>
+                        <td><span style='color:${log.status === 'SUCCESS' ? '#34d399' : log.status === 'MANUAL_OVERRIDE' ? '#60a5fa' : '#f87171'}'>● ${log.status || 'OK'}</span></td>
+                    `;
 
-            snapshot.forEach((doc) => {
-                const log = doc.data();
-                const row = document.createElement('tr');
+                    // Prepend new logs so the most recent appear first
+                    if (logsBody.firstChild) logsBody.insertBefore(row, logsBody.firstChild);
+                    else logsBody.appendChild(row);
 
-                row.innerHTML = `
-                    <td><small style='font-size:11px; color:#9ca3af;'>${log.medication_id ? log.medication_id.substring(0, 6) : 'System'}</small></td>
-                    <td><small>${log.timestamp || 'Just now'}</small></td>
-                    <td><span style='color:${log.status === 'SUCCESS' ? '#34d399' : log.status === 'MANUAL_OVERRIDE' ? '#60a5fa' : '#f87171'}'>● ${log.status || 'OK'}</span></td>
-                `;
-
-                logsBody.appendChild(row);
-
-                if (log.status === 'SUCCESS') {
-                    const b = document.createElement('div');
-                    b.className = 'alert-banner alert-success';
-                    b.innerText = `✅ Success: Medication successfully taken at ${log.timestamp}.`;
-                    alertBox.insertBefore(b, alertBox.firstChild);
-                    triggerOSNotification('✅ Medication Dispensed', `Medication successfully taken at ${log.timestamp}.`);
-                } else if (log.status === 'ERROR') {
-                    const b = document.createElement('div');
-                    b.className = 'alert-banner alert-error';
-                    b.innerText = `❌ Error Message: Pill was not successfully dispensed at ${log.timestamp}!`;
-                    alertBox.insertBefore(b, alertBox.firstChild);
-                    triggerOSNotification('❌ Dispenser Error', `Pill was NOT successfully dispensed at ${log.timestamp}!`);
+                    // Add alert banners and trigger OS notifications for important statuses
+                    if (log.status === 'SUCCESS') {
+                        const b = document.createElement('div');
+                        b.className = 'alert-banner alert-success';
+                        b.innerText = `✅ Success: Medication successfully taken at ${log.timestamp}.`;
+                        alertBox.insertBefore(b, alertBox.firstChild);
+                        triggerOSNotification('✅ Medication Dispensed', `Medication successfully taken at ${log.timestamp}.`);
+                    } else if (log.status === 'ERROR') {
+                        const b = document.createElement('div');
+                        b.className = 'alert-banner alert-error';
+                        b.innerText = `❌ Error Message: Pill was not successfully dispensed at ${log.timestamp}!`;
+                        alertBox.insertBefore(b, alertBox.firstChild);
+                        triggerOSNotification('❌ Dispenser Error', `Pill was NOT successfully dispensed at ${log.timestamp}!`);
+                    } else if (log.status === 'MANUAL_OVERRIDE') {
+                        const b = document.createElement('div');
+                        b.className = 'alert-banner alert-success';
+                        b.innerText = `🔧 Manual dispense triggered at ${log.timestamp}.`;
+                        alertBox.insertBefore(b, alertBox.firstChild);
+                    }
                 }
             });
+
+            // If no logs exist yet, show placeholder row
+            if (logsBody.children.length === 0) {
+                logsBody.innerHTML = "<tr><td colspan='3' style='text-align:center; color:#9ca3af;'>No logs yet.</td></tr>";
+            }
         });
     </script>
 </body>
